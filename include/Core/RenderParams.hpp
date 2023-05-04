@@ -68,6 +68,62 @@ struct VolumeParams{
     Float3 space;
 };
 
+struct Clight{
+    float			m_Theta;
+    float			m_Phi;
+    float			m_Width;
+    float			m_InvWidth;
+    float			m_HalfWidth;
+    float			m_InvHalfWidth;
+    float			m_Height;
+    float			m_InvHeight;
+    float			m_HalfHeight;
+    float			m_InvHalfHeight;
+    float			m_Distance;
+    float			m_SkyRadius;
+    float3			m_P;
+    float3			m_Target;
+    float3			m_N;
+    float3			m_U;
+    float3			m_V;
+    float			m_Area;
+    float			m_AreaPdf;
+    float3      	m_Color;
+    float           m_intensity;
+    float3      	m_ColorTop;
+    float3      	m_ColorMiddle;
+    float3      	m_ColorBottom;
+    int				m_T;
+    Clight(void) :
+          m_Theta(0.0f),
+          m_Phi(0.0f),
+          m_Width(1.0f),
+          m_InvWidth(1.0f / m_Width),
+          m_HalfWidth(0.5f * m_Width),
+          m_InvHalfWidth(1.0f / m_HalfWidth),
+          m_Height(1.0f),
+          m_InvHeight(1.0f / m_Height),
+          m_HalfHeight(0.5f * m_Height),
+          m_InvHalfHeight(1.0f / m_HalfHeight),
+          m_Distance(1.0f),
+          m_SkyRadius(100.0f),
+          m_Area(m_Width * m_Height),
+          m_AreaPdf(1.0f / m_Area),
+          m_intensity(100.0f),
+          m_T(0){
+        m_P = make_float3(1.0f, 1.0f, 1.0f);
+        m_Target = make_float3(0.0f, 0.0f, 0.0f);
+        m_N = make_float3(1.0f, 0.0f, 0.0f);
+        m_U = make_float3(1.0f, 0.0f, 0.0f);
+        m_V = make_float3(1.0f, 0.0f, 0.0f);
+        m_Color = make_float3(10.0f, 10.0f, 10.0f);
+        m_ColorTop = make_float3(10.0f, 10.0f, 10.0f);
+        m_ColorMiddle = make_float3(10.0f, 10.0f, 10.0f);
+        m_ColorBottom = make_float3(10.0f, 10.0f, 10.0f);
+    }
+};
+
+
 struct RenderParams{
     void Reset(){
         light.updated   = false;
@@ -80,9 +136,15 @@ struct RenderParams{
         other.updated   = false;
         raycast.updated = false;
     }
+
     struct {
         int updated = false;
+        Clight lights[4];
+        int lightnum = 0;
     }light;
+
+
+
     struct {
         int updated = false;
         LevelOfDist leve_of_dist;

@@ -795,7 +795,7 @@ namespace{
         float3 N = make_float3(0.f);
         if((tex_coord.w & 0xffff) & TexCoordFlag_IsValid){
             float3 b = coord * params.cu_volume.block_size + offset_in_block + params.cu_volume.padding;
-            float3 sampling_pos = (b + make_float3(1.f, 0.f, 0.f)) * params.cu_render_params.inv_tex_shape;
+            float3 sampling_pos = (b - make_float3(1.f, 0.f, 0.f)) * params.cu_render_params.inv_tex_shape;
             float x1 = tex3D<float>(params.cu_vtex[tid], sampling_pos.x, sampling_pos.y, sampling_pos.z);
             sampling_pos = (b - make_float3(-1.f, 0.f, 0.f)) * params.cu_render_params.inv_tex_shape;
             float x2 = tex3D<float>(params.cu_vtex[tid], sampling_pos.x, sampling_pos.y, sampling_pos.z);
@@ -1382,11 +1382,11 @@ namespace{
 
 
 
-    CUB_GPU bool IntersectBox(const RayExt& R, float* pNearT, float* pFarT)
+    CUB_GPU bool IntersectBox(const PBVolumeRenderKernelParams& params, const RayExt& R, float* pNearT, float* pFarT)
     {
         const float3 InvR		= make_float3(1.0f, 1.0f, 1.0f) / R.d;
-        const float3 BottomT	= InvR * (make_float3(gAaBbMin.x, gAaBbMin.y, gAaBbMin.z) - R.o);
-        const float3 TopT		= InvR * (make_float3(gAaBbMax.x, gAaBbMax.y, gAaBbMax.z) - R.o);
+        const float3 BottomT	= InvR * (make_float3(params.cu_volume.bound.low.x, params.cu_volume.bound.low.y, params.cu_volume.bound.low.z ), - R.o);
+        const float3 TopT		= InvR * (make_float3(params.cu_volume.bound.high.x, params.cu_volume.bound.high.y, params.cu_volume.bound.high.z ), - R.o);
         const float3 MinT		= fminf(TopT, BottomT);
         const float3 MaxT		= fmaxf(TopT, BottomT);
         const float LargestMinT = fmaxf(fmaxf(MinT.x, MinT.y), fmaxf(MinT.x, MinT.z));
@@ -1471,7 +1471,7 @@ namespace{
         __shared__ float MaxT[KRNL_SS_BLOCK_SIZE];
         __shared__ float3 Ps[KRNL_SS_BLOCK_SIZE];
 
-        if (!IntersectBox(R, &MinT[TID], &MaxT[TID]))
+        if (!IntersectBox(params, R, &MinT[TID], &MaxT[TID]))
             return false;
 
         MinT[TID] = max(MinT[TID], R.min_t);
@@ -1516,7 +1516,7 @@ namespace{
     {
         float MinT = 0.0f, MaxT = 0.0f;
 
-        if (!IntersectBox(R, &MinT, &MaxT))
+        if (!IntersectBox(params, R, &MinT, &MaxT))
             return false;
 
         MinT = max(MinT, R.min_t);
@@ -2578,39 +2578,47 @@ void PBVolumeRenderer::BindGridVolume(Handle<GridVolume> volume)
 
 void PBVolumeRenderer::SetRenderParams(const RenderParams &render_params)
 {
-    if(true || render_params.light.updated){
-        CLight area_light;
-        area_light.m_T = 0;
-        area_light.m_Theta = PI_F * 0.25f;
-        area_light.m_Phi = PI_F * 0.5f;
-        area_light.m_Width = 0.01f;
-        area_light.m_Height = 0.01f;
-        area_light.m_Distance = 6.f;
-        area_light.m_Color = 100.f * make_float3(0.5f, 0.48443f, 0.36765f);
-        area_light.Update(make_float3(_->volume_bound.low.x,
-                                      _->volume_bound.low.y,
-                                      _->volume_bound.low.z),
-                          make_float3(_->volume_bound.high.x,
-                                      _->volume_bound.high.y,
-                                      _->volume_bound.high.z));
+    if(render_params.light.updated){
 
-        _->kernel_params.m_Lighting.AddLight(area_light);
+        _->kernel_params.m_Lighting.Reset();
+
+        for(int i=0;i<render_params.light.lightnum;i++){
+            CLight new_light;
+            if(render_params.light.lights[i].m_T == 0){
+                new_light.m_T = 0;
+                new_light.m_Theta = render_params.light.lights[i].m_Theta;
+                new_light.m_Phi = render_params.light.lights[i].m_Phi;
+                new_light.m_Width = render_params.light.lights[i].m_Width;
+                new_light.m_Height = render_params.light.lights[i].m_Height;
+                new_light.m_Distance = render_params.light.lights[i].m_Distance;
+                new_light.m_Color = render_params.light.lights[i].m_intensity * render_params.light.lights[i].m_Color;
+                new_light.Update(make_float3(_->volume_bound.low.x,
+                                              _->volume_bound.low.y,
+                                              _->volume_bound.low.z),
+                                  make_float3(_->volume_bound.high.x,
+                                              _->volume_bound.high.y,
+                                              _->volume_bound.high.z));
+
+                _->kernel_params.m_Lighting.AddLight(new_light);
+            }
+            else{
+                new_light.m_T = 1;
+                new_light.m_ColorTop = render_params.light.lights[i].m_intensity * render_params.light.lights[i].m_ColorTop;
+                new_light.m_ColorMiddle = render_params.light.lights[i].m_intensity * render_params.light.lights[i].m_ColorMiddle;
+                new_light.m_ColorBottom = render_params.light.lights[i].m_intensity * render_params.light.lights[i].m_ColorBottom;
+                new_light.Update(make_float3(_->volume_bound.low.x,
+                                                    _->volume_bound.low.y,
+                                                    _->volume_bound.low.z),
+                                        make_float3(_->volume_bound.high.x,
+                                                    _->volume_bound.high.y,
+                                                    _->volume_bound.high.z));
+
+                _->kernel_params.m_Lighting.AddLight(new_light);
+            }
+
+        }
 
 
-
-        CLight background_light;
-        background_light.m_T = 1;
-        background_light.m_ColorTop = 100.f * make_float3(1.f, 0.f, 0.f);
-        background_light.m_ColorMiddle = 100.f * make_float3(0.f, 1.f, 0.f);
-        background_light.m_ColorBottom = 100.f * make_float3(0.f, 0.f, 1.f);
-        background_light.Update(make_float3(_->volume_bound.low.x,
-                                            _->volume_bound.low.y,
-                                            _->volume_bound.low.z),
-                                make_float3(_->volume_bound.high.x,
-                                            _->volume_bound.high.y,
-                                            _->volume_bound.high.z));
-
-        _->kernel_params.m_Lighting.AddLight(background_light);
 
     }
     if(render_params.lod.updated){

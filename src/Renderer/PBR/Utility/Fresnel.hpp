@@ -7,6 +7,14 @@ VISER_BEGIN
 namespace cuda{
 
 
+
+    CUB_CPU_GPU inline void swap(float& a, float& b)
+    {
+        float t = a; a = b; b = t;
+    }
+
+
+
     CUB_CPU_GPU inline float DielectricFresnel(float etaI, float etaO, float cosThetaI) {
         if(cosThetaI < 0.f){
             swap(etaI, etaO);

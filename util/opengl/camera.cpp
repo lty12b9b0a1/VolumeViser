@@ -116,4 +116,14 @@ VUTIL_GL_BEGIN
         return pos;
     }
 
+    float fps_camera_t::get_move_speed() const noexcept
+    {
+        return move_speed;
+    }
+
+    float fps_camera_t::get_cursor_speed() const noexcept
+    {
+        return cursor_speed;
+    }
+
     VUTIL_GL_END
